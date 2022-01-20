@@ -226,6 +226,7 @@ FutureBuilder<List<CurrencyRateModel>> infoListPart() {
       } else {
         return ListView.builder(
           itemCount: snapshot.data!.length,
+          physics: const BouncingScrollPhysics(),
           itemBuilder: (BuildContext context, int index) {
             return Card(
               child: ExpansionTile(
