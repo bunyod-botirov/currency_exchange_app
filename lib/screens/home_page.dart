@@ -1,5 +1,6 @@
+import 'package:currency_exchange_app/service/currency_hive.dart';
 import 'package:flutter/material.dart';
-import '../model/currency_model.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import '../service/currency_service.dart';
 
 class HomePage extends StatefulWidget {
@@ -18,6 +19,8 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    ServiceCurrency.getCurrencyRate();
+    Box data = CurrencyHive.currencyBox;
     return Scaffold(
       backgroundColor: Colors.white,
       resizeToAvoidBottomInset: false,
@@ -33,22 +36,32 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
       ),
-      body: Column(
-        children: <Widget>[
-          Expanded(
-            flex: 4,
-            child: inputGetterPart(context),
-          ),
-          Expanded(
-            flex: 8,
-            child: infoListPart(),
-          ),
-        ],
+      body: Builder(
+        builder: (BuildContext context) {
+          if (data.isEmpty) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          } else {
+            return Column(
+              children: <Widget>[
+                Expanded(
+                  flex: 4,
+                  child: inputGetterPart(context, data),
+                ),
+                Expanded(
+                  flex: 8,
+                  child: infoListPart(data),
+                ),
+              ],
+            );
+          }
+        },
       ),
     );
   }
 
-  Column inputGetterPart(BuildContext context) {
+  Column inputGetterPart(BuildContext context, Box snapshot) {
     return Column(
       children: <Widget>[
         const Spacer(),
@@ -57,42 +70,35 @@ class _HomePageState extends State<HomePage> {
             const Spacer(),
             SizedBox(
               width: MediaQuery.of(context).size.width * 0.8,
-              child: FutureBuilder(
-                future: ServiceCurrency.getCurrencyRate(),
-                builder: (BuildContext context,
-                    AsyncSnapshot<List<CurrencyRateModel>> snapshot) {
-                  return TextFormField(
-                    controller: _fromController,
-                    keyboardType: TextInputType.number,
-                    maxLines: 1,
-                    decoration: InputDecoration(
-                      labelText: "From",
-                      floatingLabelBehavior: FloatingLabelBehavior.always,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(
-                          MediaQuery.of(context).size.width * 0.04,
-                        ),
-                      ),
+              child: TextFormField(
+                controller: _fromController,
+                keyboardType: TextInputType.number,
+                maxLines: 1,
+                decoration: InputDecoration(
+                  labelText: "From",
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(
+                      MediaQuery.of(context).size.width * 0.04,
                     ),
-                    onTap: () {
-                      for (int i = 0; i < snapshot.data!.length; i++) {
-                        if (_popupValue == snapshot.data![i].code) {
-                          _selectedCurrency =
-                              snapshot.data![i].cbPrice.toString();
-                          break;
-                        }
-                      }
-                    },
-                    onChanged: (value) {
-                      workWhenCurrencyChanged(value);
-                      setState(() {});
-                    },
-                  );
+                  ),
+                ),
+                onTap: () {
+                  for (int i = 0; i < snapshot.length; i++) {
+                    if (_popupValue == snapshot.getAt(i).code) {
+                      _selectedCurrency = snapshot.getAt(i).cbPrice.toString();
+                      break;
+                    }
+                  }
+                },
+                onChanged: (value) {
+                  workWhenCurrencyChanged(value);
+                  setState(() {});
                 },
               ),
             ),
             const Spacer(),
-            !_isFrom ? popupMenuButton() : const Text("UZS"),
+            !_isFrom ? popupMenuButton(snapshot) : const Text("UZS"),
             const Spacer(),
           ],
         ),
@@ -141,7 +147,7 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             const Spacer(),
-            _isFrom ? popupMenuButton() : const Text("UZS"),
+            _isFrom ? popupMenuButton(snapshot) : const Text("UZS"),
             const Spacer(),
           ],
         ),
@@ -166,146 +172,128 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  FutureBuilder<List<CurrencyRateModel>> popupMenuButton() {
-    return FutureBuilder(
-      future: ServiceCurrency.getCurrencyRate(),
-      builder: (BuildContext context,
-          AsyncSnapshot<List<CurrencyRateModel>> snapshot) {
-        return PopupMenuButton(
-          child: Row(
+  PopupMenuButton popupMenuButton(Box snapshot) {
+    return PopupMenuButton(
+      child: Row(
+        children: <Widget>[
+          Text(_popupValue),
+          const Icon(
+            Icons.arrow_drop_down,
+            size: 20,
+          ),
+        ],
+      ),
+      itemBuilder: (context) {
+        return List.generate(
+          snapshot.length,
+          (index) {
+            return PopupMenuItem(
+              child: Text(
+                snapshot.getAt(index).code.toString(),
+              ),
+              value: snapshot.getAt(index).code.toString(),
+            );
+          },
+        );
+      },
+      onSelected: (value) {
+        _popupValue = value.toString();
+        for (int i = 0; i < snapshot.length; i++) {
+          if (_popupValue == snapshot.getAt(i).code) {
+            _selectedCurrency = snapshot.getAt(i).cbPrice.toString();
+            break;
+          }
+        }
+        if (_fromController.text.isNotEmpty) {
+          _toLabelText = double.parse(_fromController.text) *
+              double.parse(_selectedCurrency);
+        }
+        setState(() {});
+      },
+    );
+  }
+
+  ListView infoListPart(Box snapshot) {
+    return ListView.builder(
+      itemCount: snapshot.length,
+      physics: const BouncingScrollPhysics(),
+      itemBuilder: (BuildContext context, int index) {
+        return Card(
+          child: ExpansionTile(
+            title: Text(snapshot.getAt(index).title.toString()),
+            trailing: Text(snapshot.getAt(index).code.toString()),
             children: <Widget>[
-              Text(_popupValue),
-              const Icon(
-                Icons.arrow_drop_down,
-                size: 20,
+              Card(
+                child: Container(
+                  color: const Color(0xFFF0F0F0),
+                  child: Column(
+                    children: <Widget>[
+                      _info(
+                        context,
+                        snapshot,
+                        index,
+                        "1 UZS",
+                        "${snapshot.getAt(index).cbPrice} ${snapshot.getAt(index).code}",
+                      ),
+                      _info(
+                        context,
+                        snapshot,
+                        index,
+                        "Buy Price",
+                        "${snapshot.getAt(index).nbuBuyPrice}",
+                      ),
+                      _info(
+                        context,
+                        snapshot,
+                        index,
+                        "Cell Price",
+                        "${snapshot.getAt(index).nbuCellPrice}",
+                      ),
+                      _info(
+                        context,
+                        snapshot,
+                        index,
+                        "Last Updated",
+                        "${snapshot.getAt(index).date}",
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
-          itemBuilder: (context) {
-            return List.generate(
-              snapshot.data!.length,
-              (index) {
-                return PopupMenuItem(
-                  child: Text(
-                    snapshot.data![index].code.toString(),
-                  ),
-                  value: snapshot.data![index].code.toString(),
-                );
-              },
-            );
-          },
-          onSelected: (value) {
-            _popupValue = value.toString();
-            for (int i = 0; i < snapshot.data!.length; i++) {
-              if (_popupValue == snapshot.data![i].code) {
-                _selectedCurrency = snapshot.data![i].cbPrice.toString();
-                break;
-              }
-            }
-            if (_fromController.text.isNotEmpty) {
-              _toLabelText = double.parse(_fromController.text) *
-                  double.parse(_selectedCurrency);
-            }
-            setState(() {});
-          },
         );
       },
     );
   }
-}
 
-FutureBuilder<List<CurrencyRateModel>> infoListPart() {
-  return FutureBuilder(
-    future: ServiceCurrency.getCurrencyRate(),
-    builder: (BuildContext context,
-        AsyncSnapshot<List<CurrencyRateModel>> snapshot) {
-      if (!snapshot.hasData) {
-        return const Center(
-          child: CircularProgressIndicator(),
-        );
-      } else {
-        return ListView.builder(
-          itemCount: snapshot.data!.length,
-          physics: const BouncingScrollPhysics(),
-          itemBuilder: (BuildContext context, int index) {
-            return Card(
-              child: ExpansionTile(
-                title: Text(snapshot.data![index].title.toString()),
-                trailing: Text(snapshot.data![index].code.toString()),
-                children: <Widget>[
-                  Card(
-                    child: Container(
-                      color: const Color(0xFFF0F0F0),
-                      child: Column(
-                        children: <Widget>[
-                          _info(
-                            context,
-                            snapshot,
-                            index,
-                            "1 UZS",
-                            "${snapshot.data![index].cbPrice} ${snapshot.data![index].code}",
-                          ),
-                          _info(
-                            context,
-                            snapshot,
-                            index,
-                            "Buy Price",
-                            "${snapshot.data![index].nbuBuyPrice}",
-                          ),
-                          _info(
-                            context,
-                            snapshot,
-                            index,
-                            "Cell Price",
-                            "${snapshot.data![index].nbuCellPrice}",
-                          ),
-                          _info(
-                            context,
-                            snapshot,
-                            index,
-                            "Last Updated",
-                            "${snapshot.data![index].date}",
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+  Card _info(
+    BuildContext context,
+    Box snapshot,
+    int index,
+    String firstText,
+    String thirdText,
+  ) {
+    return Card(
+      child: ListTile(
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: <Widget>[
+            Text(
+              firstText,
+              style: const TextStyle(
+                color: Colors.blueGrey,
               ),
-            );
-          },
-        );
-      }
-    },
-  );
-}
-
-Card _info(
-  BuildContext context,
-  AsyncSnapshot<List<CurrencyRateModel>> snapshot,
-  int index,
-  String firstText,
-  String thirdText,
-) {
-  return Card(
-    child: ListTile(
-      title: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: <Widget>[
-          Text(
-            firstText,
-            style: const TextStyle(
-              color: Colors.blueGrey,
             ),
-          ),
-          Text(
-            thirdText.isEmpty ? "Nothing" : thirdText,
-            style: const TextStyle(
-              color: Colors.blueGrey,
+            Text(
+              thirdText.isEmpty ? "Nothing" : thirdText,
+              style: const TextStyle(
+                color: Colors.blueGrey,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }

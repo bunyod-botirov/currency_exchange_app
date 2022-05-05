@@ -1,7 +1,9 @@
+import 'package:currency_exchange_app/service/currency_hive.dart';
 import 'package:flutter/material.dart';
 import './screens/home_page.dart';
 
-void main() {
+Future<void> main() async {
+  await CurrencyHive.init();
   runApp(const MyApp());
 }
 
